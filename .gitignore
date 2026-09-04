@@ -1,2 +1,4 @@
 playground.py
 .vscode
+__pycache__
+.pytest_cache

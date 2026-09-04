@@ -10,9 +10,9 @@ def build_directional_kernel(pattern_row, pattern_col):
     return kernel
 
 
-def compute_wind_similarity(pattern_row, pattern_col, normalized_wind_vector):
+def compute_wind_similarity(direction_y, direction_x, normalized_wind_vector):
     """Similitud coseno entre la dirección del vecino y la dirección del viento."""
-    direction_vector = np.array([pattern_row, pattern_col])
+    direction_vector = np.array([direction_y, direction_x])
     normalized_direction = direction_vector / np.linalg.norm(direction_vector)
     return np.dot(normalized_direction, normalized_wind_vector)
 
@@ -36,13 +36,18 @@ def compute_directional_data(pattern_row, pattern_column, normalized_wind_vector
     return directions
 
 
-def propagate_step(grid, directional_data):
-    """Ejecuta un timestep de propagación: calcula prob_total y enciende celdas nuevas."""
+def calculate_prob_total(grid, directional_data):
+    """Calcula la probabilidad efectiva de que cada celda se encienda segun la dirección del viento"""
     probability_maps = [
         convolve2d(grid, kernel, mode='same', boundary='fill') * probability
         for kernel, probability in directional_data
     ]
-    prob_total = 1 - np.prod(1 - np.array(probability_maps), axis=0)
+    
+    return 1 - np.prod(1 - np.array(probability_maps), axis=0)
+
+def propagate_step(grid, directional_data):
+    """Ejecuta un timestep de propagación: calcula prob_total y enciende celdas nuevas."""
+    prob_total = calculate_prob_total(grid, directional_data)
     random_array = np.random.random(grid.shape)
     success_mask = random_array < prob_total
 
@@ -66,8 +71,7 @@ def run_simulation(initial_grid, normalized_wind_vector, base_probability, wind_
 
 
 if __name__ == "__main__":
-    rows, columns = 200, 200
-    grid = np.zeros((rows, columns))
+    grid = np.zeros((200, 200))
     grid[0, 0] = 1  # fuego semilla inicial
 
     wind_vector = np.array([-5, 0])
