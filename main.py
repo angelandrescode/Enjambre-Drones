@@ -2,48 +2,80 @@ import numpy as np
 import time
 from scipy.signal import convolve2d
 
-inicio = time.time()
-rows, columns = 200, 200
-grid = np.zeros((rows, columns))
 
-grid[0, 0] = 1  # fuego semilla inicial
+def build_directional_kernel(pattern_row, pattern_col):
+    """Crea un kernel 3x3 con un solo 1 en la posición de la dirección dada."""
+    kernel = np.zeros((3, 3))
+    kernel[1 + pattern_row, 1 + pattern_col] = 1
+    return kernel
 
-base_probability = 0.1
-wind_force = 1 # si la extension del fuego esta alineada con la direccion del viento, entonces, habra un 100% de que se encienda ese fuego
-wind_vector = np.array([-5,0]) 
-normalized_wind_vector = wind_vector / np.linalg.norm(wind_vector) #solo hallamos la direccion del viento, que es lo que nos importa
 
-def start_simulation(initial_grid):
+def compute_wind_similarity(pattern_row, pattern_col, normalized_wind_vector):
+    """Similitud coseno entre la dirección del vecino y la dirección del viento."""
+    direction_vector = np.array([pattern_row, pattern_col])
+    normalized_direction = direction_vector / np.linalg.norm(direction_vector)
+    return np.dot(normalized_direction, normalized_wind_vector)
+
+
+def compute_directional_data(pattern_row, pattern_column, normalized_wind_vector,
+                              base_probability, wind_force):
+    """
+    Precalcula, para cada una de las 8 direcciones, su kernel y su probabilidad
+    efectiva de encendido según el viento. Esto no depende del estado del grid,
+    así que se calcula una sola vez y se reutiliza en cada timestep.
+    """
+    directions = []
+    for i in range(8):
+        kernel = build_directional_kernel(pattern_row[i], pattern_column[i])
+        similarity = compute_wind_similarity(pattern_row[i], pattern_column[i], normalized_wind_vector)
+        probability = np.clip(
+            base_probability + (1 - base_probability) * wind_force * similarity,
+            base_probability, 1.0
+        )
+        directions.append((kernel, probability))
+    return directions
+
+
+def propagate_step(grid, directional_data):
+    """Ejecuta un timestep de propagación: calcula prob_total y enciende celdas nuevas."""
+    probability_maps = [
+        convolve2d(grid, kernel, mode='same', boundary='fill') * probability
+        for kernel, probability in directional_data
+    ]
+    prob_total = 1 - np.prod(1 - np.array(probability_maps), axis=0)
+    random_array = np.random.random(grid.shape)
+    success_mask = random_array < prob_total
+
+    new_grid = grid.copy()
+    new_grid[success_mask] = 1
+    return new_grid
+
+
+def run_simulation(initial_grid, normalized_wind_vector, base_probability, wind_force):
     pattern_row = [0, 0, 1, 1, 1, -1, -1, -1]
     pattern_column = [1, -1, 0, 1, -1, 0, 1, -1]
-    new_grid = initial_grid.copy()
-    template_kernel = np.zeros((3, 3))
-    array_of_convolutions = []
-    while not new_grid.all():
-        for i in range(8):
-            template_kernel[1+pattern_row[i], 1+pattern_column[i]] = 1
-            kernel_in_actual_direction = template_kernel.copy()
-            
-            neighbors = convolve2d(new_grid, kernel_in_actual_direction, mode='same', boundary='fill')
-            vector_fire_expansion = np.array([pattern_row[i], pattern_column[i]])
-            normalized_vector_fire_expansion = vector_fire_expansion / np.linalg.norm(vector_fire_expansion)
-            similarity_to_wind_vector = np.dot(normalized_vector_fire_expansion, normalized_wind_vector)
-            
-            probability_to_get_burnt = np.clip(base_probability + (1 - base_probability) * wind_force * similarity_to_wind_vector, base_probability, 1.0)
-            neighbors = neighbors * probability_to_get_burnt
-            array_of_convolutions.append(neighbors)
-            template_kernel[1+pattern_row[i], 1+pattern_column[i]] = 0
-        
-        prob_total = 1 - np.prod(1 - np.array(array_of_convolutions), axis=0)
-        random_array = np.random.random(new_grid.shape)
-        success_mask = random_array < prob_total
-        new_grid[success_mask] = 1
-        array_of_convolutions = []
-            
-            
-            
-            
-            
-            
-start_simulation(grid)
-print(time.time() - inicio)
+
+    directional_data = compute_directional_data(
+        pattern_row, pattern_column, normalized_wind_vector, base_probability, wind_force
+    )
+
+    grid = initial_grid.copy()
+    while not grid.all():
+        grid = propagate_step(grid, directional_data)
+    return grid
+
+
+if __name__ == "__main__":
+    rows, columns = 200, 200
+    grid = np.zeros((rows, columns))
+    grid[0, 0] = 1  # fuego semilla inicial
+
+    wind_vector = np.array([-5, 0])
+    normalized_wind_vector = wind_vector / np.linalg.norm(wind_vector)
+
+    inicio = time.time()
+    final_grid = run_simulation(grid, normalized_wind_vector, base_probability=0.1, wind_force=1)
+    print(time.time() - inicio)
+    
+    
+    
